@@ -3,24 +3,8 @@
 #include <string.h>
 #include <math.h>
 
-/* O QUE EST� 'FEITO'
- * 	O PROGRAMA RECEBE A STRING, CONVERTE PARA BIT
- *	VERIFICA O NEGOCIO DE ERRO DE ACORDO COM A VARIAVEL TIPODECONTROLEDEERRO
- *	ENVIA PARA O MEIO DE COMUNICA��O
- *	DO MEIO DE COMUNICA��O ENVIA PARA O RECEPTOR
- *	QUE TRANSFORMA OS BITS EM CARACTERES E IMPRIME A STRING RECEBIDA
- */
-
-/* O QUE PRECISA SER FEITO
- *	ADICIONAR A VERIFICA��O DE ERRO CRC-32 PARA O ENVIO
- *	AJEITAR A FUN��O DO MEIO DE COMUNICA��O QUE SIMPLESMENTE TA ENVIANDO SEM ERRO
- * NENHUM OS BITS
- *	FAZER A VERIFICA��O DE ERROS NAS FUNCOES DE CONTROLE DE ERRO DO RECEPTOR
- *
- *	E TESTAR MT PQ ACABEI DE ACHAR UM ERRO ESCREVENDO ISSO. � ISSO!
- */
-
-int tipoDeControleDeErro = 0;
+int tipoDeControleDeErro = 2;
+int chave[32] = {1,0,0,0,0,0,1,0,0,1,1,0,0,0,0,0,1,0,0,0,1,1,1,0,1,1,0,1,1,0,1,1};
 
 void AplicacaoTransmissora();
 void CamadaDeAplicacaoTransmissora(char *mensagem);
@@ -33,20 +17,14 @@ void CamadaEnlaceDadosTransmissoraControleDeErroCRC(int **quadro, int *tamBit);
 
 void MeioDeComunicacao(int *quadro, int tamBit);
 
-void CamadaElaceDadosReceptoraControleDeErro(int **quadro, int *tamBit);
-void CamadaEnlaceDadosReceptoraControleDeErroBitParidadePar(int **quadro, int *tamBit);
-void CamadaEnlaceDadosReceptoraControleDeErroBitParidadeImpar(int **quadro, int *tamBit);
-void CamadaEnlaceDadosReceptoraControleDeErroCRC(int **quadro, int *tamBit);
+short CamadaElaceDadosReceptoraControleDeErro(int **quadro, int *tamBit);
+short CamadaEnlaceDadosReceptoraControleDeErroBitParidadePar(int **quadro, int *tamBit);
+short CamadaEnlaceDadosReceptoraControleDeErroBitParidadeImpar(int **quadro, int *tamBit);
+short CamadaEnlaceDadosReceptoraControleDeErroCRC(int **quadro, int *tamBit);
 
 void CamadaEnlaceDadosReceptora(int *quadro, int tamBit);
-void CamadaDeAplicacaoReceptora(int *quadro, int tamBit);
-void AplicacaoReceptora(char *mensagem);
-
-void main() {
-	AplicacaoTransmissora();
-
-	return;
-}
+void CamadaDeAplicacaoReceptora(int *quadro, int tamBit, short erro);
+void AplicacaoReceptora(char *mensagem, short erro);
 
 int *CharParaBit(char letra) {
 	int bits[8] = {0, 0, 0, 0, 0, 0, 0, 0};
@@ -75,7 +53,7 @@ int *StringParaBit(char *string) {
 	int *ajuda;
 
 	if (bits == NULL) {
-		return 0;
+		return;
 	}
 
 
@@ -109,7 +87,7 @@ char *BitParaString(int *bits, int tamBit) {
 	int *ajuda = (int*)malloc(8 * sizeof(int));
 	int i, j, tamanho = tamBit / 8, k;
 
-	string = (char*) malloc(tamanho * sizeof(char));
+	string = (char*) malloc((tamanho) * sizeof(char));
 
 	k = 0;
 	for (i = 0; i < tamanho; i++) {
@@ -122,44 +100,39 @@ char *BitParaString(int *bits, int tamBit) {
 		string[k++] = carac;
 	}
 
+	string[k] = '\0';
+
 	return string;
 }
 
 void AplicacaoTransmissora() {
 	char mensagem[1024];
 
+	printf("Digite a mensagem a ser enviada:\n");
+
 	fgets(mensagem, 1024, stdin);
 
-	printf("\nA mensagem envidada foi: %s", mensagem);
+	printf("A mensagem envidada foi: %s", mensagem);
 
 	CamadaDeAplicacaoTransmissora(mensagem);
 }
 
 void CamadaDeAplicacaoTransmissora(char *mensagem) {
-	int *bits, i, tam = (strlen(mensagem) - 1) * 8;
+	int *quadro, i, tam = (strlen(mensagem) - 1) * 8;
 
-	bits = StringParaBit(mensagem);
+	quadro = StringParaBit(mensagem);
 
-	/*printf("\nBits string:\n");
+	printf("\nBits string enviado:\n");
 	for (i = 0; i < tam; i++) {
-		printf("%d", bits[i]);
-	}
-	printf("\n");*/
-
-	CamadaElaceDadosTransmissora(bits, tam);
-}
-
-void CamadaElaceDadosTransmissora(int *quadro, int tamBit) {
-	int i;
-
-	CamadaElaceDadosTransmissoraControleDeErro(&quadro, &tamBit);
-
-	printf("\nNumero de bits da mensagem: %d\n", tamBit);
-	printf("Mensagem em bits: ");
-	for (i = 0; i < tamBit; i++) {
 		printf("%d", quadro[i]);
 	}
 	printf("\n");
+
+	CamadaElaceDadosTransmissora(quadro, tam);
+}
+
+void CamadaElaceDadosTransmissora(int *quadro, int tamBit) {
+	CamadaElaceDadosTransmissoraControleDeErro(&quadro, &tamBit);
 
 	MeioDeComunicacao(quadro, tamBit);
 }
@@ -175,7 +148,7 @@ void CamadaElaceDadosTransmissoraControleDeErro(int **quadro, int *tamBit) {
 			CamadaEnlaceDadosTransmissoraControleDeErroBitParidadeImpar(quadro, tamBit);
 			break;
 		case 2:
-			// CRC
+			CamadaEnlaceDadosTransmissoraControleDeErroCRC(quadro, tamBit);
 			break;
 	}
 }
@@ -221,57 +194,243 @@ void CamadaEnlaceDadosTransmissoraControleDeErroBitParidadeImpar(int **quadro, i
 }
 
 void CamadaEnlaceDadosTransmissoraControleDeErroCRC(int **quadro, int *tamBit) {
+	int i;
+	int novoTam = (*tamBit) + 31;
+	int *ajuda = (int*) malloc(novoTam * sizeof(int));
+	int pos = 0;
 
+	for (i = 0; i < novoTam; i++) {
+		if (i < (*tamBit)) {
+			ajuda[i] = (*quadro)[i];
+		}
+		else {
+			ajuda[i] = 0;
+		}
+	}
+
+	while (novoTam - pos >= 32) {
+		if (ajuda[pos] == 1) {
+			for (i = 0; i < 32; i++) {
+				if (ajuda[i + pos] == chave[i]) {
+					ajuda[i + pos] = 0;
+				}
+				else {
+					ajuda[i + pos] = 1;
+				}
+			}
+		}
+
+		pos++;
+	}
+
+	(*quadro) = (int*) realloc((*quadro), novoTam * sizeof(int));
+	(*tamBit) = novoTam;
+
+	for (i = 0; i < 31; i++) {
+		(*quadro)[pos + i] = ajuda[pos + i];
+	}
+
+	free(ajuda);
 }
 
 void MeioDeComunicacao(int *quadro, int tamBit) {
 	int erro, porcentagemDeErros;
-	int *fluxoBrutoDeBitsPontoA, *fluxoBrutoDeBitsPontoB;
-	int tamanhoB;
+	int bitsPassados = 0;
 
-	porcentagemDeErros = 0;
+	porcentagemDeErros = 2;
 
-	fluxoBrutoDeBitsPontoA = quadro;
+	while (bitsPassados != tamBit) {
+		if ((rand() % 1000) <= porcentagemDeErros) {
+			if (quadro[bitsPassados] == 0) {
+				quadro[bitsPassados] = 1;
+			}
+			else {
+				quadro[bitsPassados] = 0;
+			}
+		}
 
-	while (tamanhoB != tamBit) {
-		fluxoBrutoDeBitsPontoB = fluxoBrutoDeBitsPontoA;
-		tamanhoB = tamBit;
+		bitsPassados++;
 	}
 
-	CamadaEnlaceDadosReceptora(fluxoBrutoDeBitsPontoB, tamBit);
+	CamadaEnlaceDadosReceptora(quadro, tamBit);
 }
 
-void CamadaElaceDadosReceptoraControleDeErro(int **quadro, int *tamBit) {
+short CamadaElaceDadosReceptoraControleDeErro(int **quadro, int *tamBit) {
+	int i;
+	short opcao;
 
+	switch (tipoDeControleDeErro) {
+		case 0:
+			opcao = CamadaEnlaceDadosReceptoraControleDeErroBitParidadePar(quadro, tamBit);
+			break;
+		case 1:
+			opcao = CamadaEnlaceDadosReceptoraControleDeErroBitParidadeImpar(quadro, tamBit);
+			break;
+		case 2:
+			opcao = CamadaEnlaceDadosReceptoraControleDeErroCRC(quadro, tamBit);
+			break;
+	}
+
+	return opcao;
 }
 
-void CamadaEnlaceDadosReceptoraControleDeErroBitParidadePar(int **quadro, int *tamBit) {
+short CamadaEnlaceDadosReceptoraControleDeErroBitParidadePar(int **quadro, int *tamBit) {
+	int valor = 0;
+	int i;
+	short opcao;
 
+	for (i = 0; i < (*tamBit) - 1; i++) {
+		valor += (*quadro)[i];
+	}
+
+	if (valor % 2 == 0) {
+		if ((*quadro)[(*tamBit) - 1] == 0) {
+			opcao = 1;
+		}
+		else {
+			opcao = 0;
+		}
+	}
+	else {
+		if ((*quadro)[(*tamBit) - 1] == 1) {
+			opcao = 1;
+		}
+		else {
+			opcao = 0;
+		}
+	}
+
+	(*tamBit)--;
+
+	return opcao;
 }
 
-void CamadaEnlaceDadosReceptoraControleDeErroBitParidadeImpar(int **quadro, int *tamBit) {
+short CamadaEnlaceDadosReceptoraControleDeErroBitParidadeImpar(int **quadro, int *tamBit) {
+	int valor = 0;
+	int i;
+	short opcao;
 
+	for (i = 0; i < (*tamBit) - 1; i++) {
+		valor += (*quadro)[i];
+	}
+
+	if (valor % 2 == 0) {
+		if ((*quadro)[(*tamBit) - 1] == 1) {
+			opcao = 1;
+		}
+		else {
+			opcao = 0;
+		}
+	}
+	else {
+		if ((*quadro)[(*tamBit) - 1] == 0) {
+			opcao = 1;
+		}
+		else {
+			opcao = 0;
+		}
+	}
+
+	(*tamBit)--;
+
+	return opcao;
 }
 
-void CamadaEnlaceDadosReceptoraControleDeErroCRC(int **quadro, int *tamBit) {
+short CamadaEnlaceDadosReceptoraControleDeErroCRC(int **quadro, int *tamBit) {
+	int i;
+	int novoTam = (*tamBit) - 31;
+	int *ajuda = (int*) malloc((*tamBit) * sizeof(int));
+	int pos = 0;
 
+	for (i = 0; i < (*tamBit); i++) {
+		ajuda[i] = (*quadro)[i];
+	}
+
+	while ((*tamBit) - pos >= 32) {
+		if (ajuda[pos] == 1) {
+			for (i = 0; i < 32; i++) {
+				if (ajuda[i + pos] == chave[i]) {
+					ajuda[i + pos] = 0;
+				}
+				else {
+					ajuda[i + pos] = 1;
+				}
+			}
+		}
+
+		pos++;
+	}
+
+	(*quadro) = (int*) realloc((*quadro), novoTam * sizeof(int));
+	(*tamBit) = novoTam;
+
+	for (i = 0; i < 31; i++) {
+		if (ajuda[i + pos] == 1) {
+			free(ajuda);
+
+			return 0;
+		}
+	}
+
+	free(ajuda);
+
+	return 1;
 }
 
 void CamadaEnlaceDadosReceptora(int *quadro, int tamBit) {
-	CamadaElaceDadosReceptoraControleDeErro(&quadro, &tamBit);
+	short erro;
+	int i;
 
-	CamadaDeAplicacaoReceptora(quadro, tamBit - 1);
+	erro = CamadaElaceDadosReceptoraControleDeErro(&quadro, &tamBit);
+
+	CamadaDeAplicacaoReceptora(quadro, tamBit, erro);
 }
 
-void CamadaDeAplicacaoReceptora(int *quadro, int tamBit) {
+void CamadaDeAplicacaoReceptora(int *quadro, int tamBit, short erro) {
 	char *mensagem;
 	int i;
 
+	printf("\nBits string recebido:\n");
+	for (i = 0; i < tamBit; i++) {
+		printf("%d", quadro[i]);
+	}
+	printf("\n");
+
 	mensagem = BitParaString(quadro, tamBit);
 
-	AplicacaoReceptora(mensagem);
+	AplicacaoReceptora(mensagem, erro);
 }
 
-void AplicacaoReceptora(char *mensagem) {
-	printf("\nA mensagem recebida foi: %s\n\n", mensagem);
+void AplicacaoReceptora(char *mensagem, short erro) {
+
+	if (erro == 1) {
+		printf("\nNao existe erro na mensagem!");
+	}
+	else {
+		printf("\nExiste erro na mensagem!");
+	}
+
+	printf("\nA mensagem recebida foi: %s\n", mensagem);
+}
+
+void main() {
+	printf("Tipo de Erro a ser verificado: ");
+
+	switch (tipoDeControleDeErro) {
+		case 0:
+			printf("Paridade Par");
+			break;
+		case 1:
+			printf("Paridade Impar");
+			break;
+		case 2:
+			printf("CRC");
+			break;
+	}
+
+	printf("\n");
+
+	AplicacaoTransmissora();
+
+	return;
 }
