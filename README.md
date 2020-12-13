@@ -8,6 +8,8 @@
 
 
 **OS utilizado**: 
+- Linux Mint 19
+- Ubuntu 16
 
 
 **Instruções básicas**:
